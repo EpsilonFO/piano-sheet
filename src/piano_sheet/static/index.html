@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Piano Sheet — de l'enregistrement à la partition</title>
+  <meta name="description" content="Envoyez un enregistrement de piano (MP3, WAV...) et obtenez sa partition.">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand" id="home-link">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2" y="6" width="28" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M9 6v20M16 6v20M23 6v20" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="7" y="6" width="4" height="11" rx="1" fill="currentColor"/>
+        <rect x="14" y="6" width="4" height="11" rx="1" fill="currentColor"/>
+        <rect x="21" y="6" width="4" height="11" rx="1" fill="currentColor"/>
+      </svg>
+      <span>Piano Sheet</span>
+    </a>
+    <p class="tagline">De l'enregistrement à la partition</p>
+  </header>
+
+  <main>
+    <!-- 1. Upload -->
+    <section id="upload-view" class="view">
+      <div class="hero">
+        <h1>Retrouvez la partition de n'importe quel morceau de piano</h1>
+        <p class="lead">
+          Envoyez un enregistrement : une IA spécialisée repère chaque note jouée, puis la partition est écrite
+          pour vous — tempo, mesure, tonalité, main droite et main gauche.
+        </p>
+      </div>
+
+      <form id="upload-form" class="card" novalidate>
+        <label class="dropzone" id="dropzone" for="file-input">
+          <input type="file" id="file-input" name="file" class="visually-hidden">
+          <svg class="dropzone-icon" viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M24 32V10m0 0-8 8m8-8 8 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 30v6a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <span class="dropzone-title" id="dropzone-title">Glissez votre fichier ici ou <u>parcourez</u></span>
+          <span class="dropzone-hint" id="dropzone-hint">MP3, WAV, FLAC, OGG, M4A ou MIDI</span>
+        </label>
+
+        <details class="options">
+          <summary>Options <span class="muted">(facultatif — tout est détecté automatiquement)</span></summary>
+          <div class="option-grid">
+            <label>Titre
+              <input type="text" name="title" placeholder="Nom du fichier" maxlength="120">
+            </label>
+            <label>Mesure
+              <select name="time_signature" data-time-signatures><option value="">Automatique</option></select>
+            </label>
+            <label>Tempo (BPM)
+              <input type="number" name="bpm" min="20" max="300" step="1" placeholder="Automatique">
+            </label>
+            <label>Tonalité
+              <select name="key" data-keys><option value="">Automatique</option></select>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="dynamics" checked> Écrire les nuances (p, mf, f…)
+            </label>
+          </div>
+          <p class="hint">Vous pourrez aussi ajuster ces réglages une fois la partition créée, sans relancer la transcription.</p>
+        </details>
+
+        <button type="submit" class="button primary" id="submit-button" disabled>Créer la partition</button>
+        <div class="upload-progress" id="upload-progress" hidden>
+          <div class="progress"><div class="progress-bar" id="upload-bar"></div></div>
+          <span>Envoi du fichier…</span>
+        </div>
+        <p class="error-text" id="upload-error" role="alert" hidden></p>
+      </form>
+
+      <ol class="steps">
+        <li><strong>Écoute</strong><span>Un réseau de neurones entraîné sur des centaines d'heures de piano détecte les notes, leur durée et leur intensité.</span></li>
+        <li><strong>Rythme</strong><span>Les temps sont suivis tout au long du morceau, même quand l'interprète ralentit ou accélère.</span></li>
+        <li><strong>Écriture</strong><span>Les notes sont réparties entre les deux mains et écrites dans la bonne tonalité.</span></li>
+      </ol>
+
+      <section id="recent" class="card recent" hidden>
+        <h2>Vos transcriptions récentes</h2>
+        <ul id="recent-list"></ul>
+      </section>
+    </section>
+
+    <!-- 2. Progress -->
+    <section id="progress-view" class="view card narrow" hidden aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <h2>Création de la partition</h2>
+      <p class="muted" id="progress-file"></p>
+      <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+      <p class="stage"><span id="progress-stage">En attente</span> <span id="progress-percent" class="muted"></span></p>
+      <p class="hint">Sans carte graphique, comptez environ une minute de calcul par minute de musique. Vous pouvez garder cette page ouverte ou y revenir plus tard.</p>
+    </section>
+
+    <!-- 3. Error -->
+    <section id="error-view" class="view card narrow" hidden>
+      <h2>La transcription a échoué</h2>
+      <p class="error-text" id="error-message"></p>
+      <a href="/" class="button primary">Essayer un autre fichier</a>
+    </section>
+
+    <!-- 4. Result -->
+    <section id="result-view" class="view" hidden>
+      <div class="card result-header">
+        <div class="result-summary">
+          <h1 id="result-title"></h1>
+          <ul class="chips" id="result-chips"></ul>
+          <ul class="warnings" id="result-warnings"></ul>
+        </div>
+        <div class="result-actions">
+          <a class="button primary" id="download-musicxml" download>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            MusicXML
+          </a>
+          <a class="button" id="download-midi" download>MIDI</a>
+          <button type="button" class="button" id="print-button">Imprimer / PDF</button>
+          <details class="more">
+            <summary class="button ghost" aria-label="Plus d'options">⋯</summary>
+            <div class="menu">
+              <a id="download-transcription" download>MIDI brut (notes jouées, avec pédale)</a>
+              <a href="/" id="new-button">Nouvelle transcription</a>
+              <button type="button" id="delete-button">Supprimer cette transcription</button>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="card players">
+        <div class="player">
+          <span class="player-label">Partition</span>
+          <button type="button" class="round-button" id="play-button" aria-label="Lire la partition">
+            <svg viewBox="0 0 24 24" class="icon-play" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+            <svg viewBox="0 0 24 24" class="icon-pause" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>
+          </button>
+          <button type="button" class="round-button small" id="stop-button" aria-label="Arrêter">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" fill="currentColor"/></svg>
+          </button>
+          <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position">
+          <span class="time" id="play-time">0:00</span>
+          <label class="checkbox small"><input type="checkbox" id="follow" checked> Suivre</label>
+        </div>
+        <div class="player">
+          <span class="player-label">Original</span>
+          <audio id="original-audio" controls preload="none"></audio>
+        </div>
+      </div>
+
+      <details class="card adjust" id="adjust">
+        <summary>Ajuster la partition <span class="muted">— mesure, tempo, tonalité…</span></summary>
+        <form id="rescore-form" class="option-grid">
+          <label>Titre
+            <input type="text" name="title" maxlength="120">
+          </label>
+          <label>Mesure
+            <select name="time_signature" data-time-signatures><option value="">Automatique</option></select>
+          </label>
+          <label>Tempo (BPM)
+            <input type="number" name="bpm" min="20" max="300" step="1" placeholder="Automatique">
+          </label>
+          <label>Tonalité
+            <select name="key" data-keys><option value="">Automatique</option></select>
+          </label>
+          <label>Filtre des notes faibles <span class="range-value" id="min-velocity-value"></span>
+            <input type="range" name="min_velocity" min="0" max="60" value="12">
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" name="dynamics" checked> Nuances
+          </label>
+          <div class="adjust-actions">
+            <button type="submit" class="button primary" id="rescore-button">Mettre à jour la partition</button>
+            <span class="muted" id="rescore-status" role="status"></span>
+          </div>
+        </form>
+        <p class="hint">
+          Astuce : si la partition semble deux fois trop rapide ou trop lente, indiquez le tempo que vous entendez ;
+          si les barres de mesure tombent mal, choisissez la mesure (3/4 pour une valse, 6/8 pour une barcarolle…).
+        </p>
+      </details>
+
+      <div class="sheet-toolbar">
+        <span class="muted" id="sheet-status"></span>
+        <div class="zoom">
+          <button type="button" class="round-button small" id="zoom-out" aria-label="Dézoomer">−</button>
+          <span id="zoom-level">100 %</span>
+          <button type="button" class="round-button small" id="zoom-in" aria-label="Zoomer">+</button>
+        </div>
+      </div>
+      <div class="sheet" id="sheet"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      Transcription par le modèle « High-resolution Piano Transcription » (Kong et al., ByteDance, 2021).
+      Une partition générée automatiquement peut contenir des erreurs : ouvrez le fichier MusicXML dans
+      <a href="https://musescore.org/fr" target="_blank" rel="noopener">MuseScore</a> pour la corriger.
+    </p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.9.0/build/opensheetmusicdisplay.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

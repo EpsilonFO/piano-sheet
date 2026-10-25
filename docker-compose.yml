@@ -1,0 +1,18 @@
+services:
+  piano-sheet:
+    build: .
+    image: piano-sheet
+    ports:
+      - "8000:8000"
+    volumes:
+      - piano-sheet-data:/data
+    environment:
+      # Limits for uploaded recordings.
+      PIANO_SHEET_MAX_UPLOAD_MB: "50"
+      PIANO_SHEET_MAX_DURATION_MIN: "20"
+      # Transcriptions are deleted after this many hours (0 = keep forever).
+      PIANO_SHEET_RETENTION_HOURS: "72"
+    restart: unless-stopped
+
+volumes:
+  piano-sheet-data:
