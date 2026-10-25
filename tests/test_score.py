@@ -133,3 +133,14 @@ def test_high_passage_gets_an_ottava_and_midi_keeps_real_pitches(tmp_path):
     played = sorted({m.note for track in mido.MidiFile(files.score_midi).tracks for m in track
                      if m.type == "note_on" and m.velocity > 0})
     assert played == sorted({p for _, _, p in high + bass})
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [("Black_Hole_Sun.transcription", "Black_Hole_Sun_transcription"), ("Ma valse préférée", "Ma_valse_préférée"),
+     ("a/../b", "a_b"), ("***", "partition")],
+)
+def test_safe_basename(name, expected):
+    from piano_sheet.pipeline import safe_basename
+
+    assert safe_basename(name) == expected

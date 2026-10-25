@@ -194,6 +194,7 @@ def run(
 
 
 def safe_basename(name: str) -> str:
-    cleaned = re.sub(r"[^\w\- ]+", "", name, flags=re.UNICODE).strip().replace(" ", "_")
+    """A file name made of letters, digits, "-" and "_" only."""
+    cleaned = re.sub(r"[^\w\-]+", "_", name).strip("_")
     return cleaned[:80] or "partition"
 

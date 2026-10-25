@@ -108,3 +108,16 @@ def test_quantize_never_overlaps_a_repeated_key():
     performance = quantize(notes, BeatGrid.constant(120, 0.5, 3), Meter(4, 4), 0)
     first, second = sorted(performance.notes, key=lambda n: n.start)
     assert first.end <= second.start
+
+
+def test_slow_held_arpeggios_are_not_counted_at_double_speed():
+    # A ballad at 70 BPM: each bar, a chord is arpeggiated in eighth notes and
+    # held with the pedal. The arpeggio notes are evenly spaced, so a tracker
+    # may take them for beats at 140 BPM.
+    chords = [(56, 63, 68, 73), (59, 63, 68, 73), (54, 63, 68, 73), (53, 63, 68, 73)]
+    score = []
+    for bar in range(16):
+        for i, pitch in enumerate(chords[bar % 4]):
+            score.append((bar * 4 + i / 2, 4 - i / 2, pitch))
+    notes = perform(score, bpm=70, jitter=0.01, seed=8, legato=0.95)
+    assert estimate_beats(notes).bpm == pytest.approx(70, rel=0.05)

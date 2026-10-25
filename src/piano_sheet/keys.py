@@ -90,9 +90,12 @@ class PitchSpeller:
         for p in scale:
             names[p.pitchClass] = (p.step, int(p.alter))
         if k.mode == "minor":
-            # Melodic/harmonic minor: raised 6th and 7th degrees keep their letter.
+            # Melodic/harmonic minor: raised 6th and 7th degrees keep their
+            # letter (G# in A minor), except where that would take a double
+            # sharp (F## in G# minor): a plain G is far easier to read.
             for degree in (scale[5], scale[6]):
-                names.setdefault((degree.pitchClass + 1) % 12, (degree.step, int(degree.alter) + 1))
+                if degree.alter < 1:
+                    names.setdefault((degree.pitchClass + 1) % 12, (degree.step, int(degree.alter) + 1))
         sharps = k.sharps
         for pc in range(12):
             if pc in names:

@@ -34,6 +34,8 @@ def test_empty_input_defaults_to_c_major():
         ("C", 70, "B-4"),
         ("C", 66, "F#4"),
         ("c#", 60, "B#3"),  # Leading tone of C# minor.
+        ("g#", 67, "G4"),  # Not F## (double sharps are hard to read).
+        ("g#", 64, "E4"),
         ("F#", 65, "E#4"),
     ],
 )

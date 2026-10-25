@@ -120,7 +120,9 @@ def _onset_envelope(notes: Sequence[NoteEvent]) -> np.ndarray:
     end = max(n.offset for n in notes)
     envelope = np.zeros(int(end * fps) + 8)
     for note in notes:
-        envelope[int(round(note.onset * fps))] += 0.3 + note.velocity / 127
+        # Low notes weigh a little more: the bass tends to fall on the beat.
+        bass = 0.5 * max(0, 72 - note.pitch) / 36
+        envelope[int(round(note.onset * fps))] += 0.3 + note.velocity / 127 + bass
     return gaussian_filter1d(envelope, 1.0)
 
 
@@ -161,7 +163,71 @@ def estimate_beats(notes: Sequence[NoteEvent], bpm: float | None = None) -> Beat
 
     if not bpm:
         beats = _normalize_tempo(beats, envelope)
-    return BeatGrid(beats)
+        tempo = 60.0 / float(np.median(np.diff(beats)))
+        if tempo > 100 and len(beats) >= 16:
+            subdivided, attacks_per_beat = _beat_activity(notes, BeatGrid(beats))
+            if subdivided < 0.2 and attacks_per_beat < 0.85:
+                # At a fast tempo, music that almost never divides the beat and
+                # often holds notes across beats means the tracker followed the
+                # notes themselves (e.g. a slow arpeggio in eighth notes): the
+                # real beat is twice as slow. Track again at that tempo so that
+                # the beats land on the strongest notes.
+                _, slower = librosa.beat.beat_track(bpm=tempo / 2, **kwargs)
+                slower = np.unique(np.asarray(slower, dtype=float))
+                beats = slower if len(slower) >= 4 else _group_beats(beats, envelope, ((2, 1.0),))
+    return BeatGrid(_fix_half_beat_phase(notes, beats))
+
+
+def _fix_half_beat_phase(notes: Sequence[NoteEvent], beats: np.ndarray) -> np.ndarray:
+    """Move the beats by half a beat if the strong notes fall between them.
+
+    In an even stream of eighth notes the tracker may pick the wrong half:
+    beats on the "ands". The bass notes and loud notes then sit half-way
+    between beats, which a performance (or a score) rarely does.
+    """
+    grid = BeatGrid(beats)
+    clusters = _clusters(notes, grid.to_beats([n.onset for n in notes]))
+    lowest = np.array([min(notes[i].pitch for i in c.notes) for c in clusters])
+    positions = np.array([c.position for c in clusters])
+    on_beat = between = 0.0
+    for index, cluster in enumerate(clusters):
+        members = [notes[i] for i in cluster.notes]
+        weight = 0.2 + max(n.velocity for n in members) / 127
+        if lowest[index] <= lowest[np.abs(positions - cluster.position) <= 1.0].min():
+            weight += 1.0  # The bass.
+        frac = cluster.position % 1.0
+        if frac < 0.12 or frac > 0.88:
+            on_beat += weight
+        elif 0.38 < frac < 0.62:
+            between += weight
+    if between > 1.3 * on_beat:
+        return grid.to_seconds(np.arange(-1, len(beats)) + 0.5)
+    return beats
+
+
+def _beat_activity(notes: Sequence[NoteEvent], grid: BeatGrid) -> tuple[float, float]:
+    """Share of the beats with notes that also have a note between beats, and
+    the number of attacks (chords count once) per beat."""
+    positions = np.array([c.position for c in _clusters(notes, grid.to_beats([n.onset for n in notes]))])
+    off_beat = np.abs(positions - np.round(positions)) > 0.15
+    with_notes = np.unique(np.round(positions).astype(int))
+    subdivided = np.unique(np.floor(positions[off_beat]).astype(int))
+    span = np.floor(positions.max()) - np.floor(positions.min()) + 1
+    return len(subdivided) / max(1, len(with_notes)), len(positions) / span
+
+
+def _group_beats(beats: np.ndarray, envelope: np.ndarray, groups) -> np.ndarray:
+    """Keep one beat out of ``group``, choosing the grouping and phase that best
+    line up with the accents. ``groups`` lists ``(group size, prior)`` pairs."""
+    accents = _accents(envelope, beats)
+    best = None
+    for group, prior in groups:
+        for phase in range(group):
+            contrast = accents[phase::group].mean() / (accents.mean() + 1e-9) * prior
+            if best is None or contrast > best[0]:
+                best = (contrast, group, phase)
+    _, group, phase = best
+    return beats[phase::group]
 
 
 def _normalize_tempo(beats: np.ndarray, envelope: np.ndarray) -> np.ndarray:
@@ -170,15 +236,7 @@ def _normalize_tempo(beats: np.ndarray, envelope: np.ndarray) -> np.ndarray:
         if tempo > 160 and len(beats) >= 8:
             # Too fast: the tracker locked onto subdivisions. Group them by two
             # or three, whichever lines up best with the accents.
-            accents = _accents(envelope, beats)
-            best = None
-            for group, prior in ((2, 1.0), (3, 0.92)):
-                for phase in range(group):
-                    contrast = accents[phase::group].mean() / (accents.mean() + 1e-9) * prior
-                    if best is None or contrast > best[0]:
-                        best = (contrast, group, phase)
-            _, group, phase = best
-            beats = beats[phase::group]
+            beats = _group_beats(beats, envelope, ((2, 1.0), (3, 0.92)))
         elif tempo < 50:
             midpoints = (beats[:-1] + beats[1:]) / 2
             beats = np.sort(np.concatenate([beats, midpoints]))
